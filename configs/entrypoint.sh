@@ -7,12 +7,17 @@ AWS_FOLDER='/root/.aws'
 
 config_write() {
     REGION=$(wget -q -O- ${AWS_IAM} | grep 'region' | cut -d'"' -f4)
+    rm -R /root/.aws
+    mkdir -p /root/.aws
+    echo "[default]" > /root/.aws/config
+    echo "region=$REGION" >> /root/.aws/config
+    echo "role_arn=$AWS_ROLE_ARN" >> /root/.aws/config
+    echo "credential_source=Ec2InstanceMetadata" >> /root/.aws/config
     echo "" >> /root/.aws/config
-    echo "[profile default]" >> /root/.aws/config
-    echo "region = $REGION"
-    echo "role_arn = $ASSUME_ROLE" >> /root/.aws/config
-    echo "credential_source = Ec2InstanceMetadata" >> /root/.aws/config
     chmod 600 -R ${AWS_FOLDER}
+
+    echo "Added credentials of"
+    cat /root/.aws/config
 }
 
 test_iam() {
@@ -27,7 +32,6 @@ test_config() {
 # Write aws cli config
 config_write
 
-
 # Check for ecr auth token generation acls
 if aws ecr get-authorization-token | grep expiresAt
 then
@@ -37,9 +41,9 @@ else
     exit 1
 fi
 
-#a update the auth token
+# update the auth token
 if [ "$REGISTRY_ID" = "" ]
-then 
+then
     aws_cli_exec=$(aws ecr get-login --no-include-email)
 else
     aws_cli_exec=$(aws ecr get-login --no-include-email --registry-ids $REGISTRY_ID)
@@ -52,6 +56,11 @@ reg_url=$(echo "${aws_cli_exec}" | awk '{print $7}')
 
 sed -i "s|${auth%??}|${auth_n}|g" ${nx_conf}
 sed -i "s|REGISTRY_URL|$reg_url|g" ${nx_conf}
+
+echo "Starting up proxy for ECR Registry: $reg_url"
+
+echo "nxconf after adjustments"
+cat ${nx_conf}
 
 /renew_token.sh &
 
